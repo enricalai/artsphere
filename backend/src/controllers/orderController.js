@@ -46,6 +46,7 @@ exports.getMySales = async (req, res) => {
 exports.createOrder = async (req, res) => {
     const { artworkId } = req.params;
     const buyerId = req.user.id;
+    const buyerName = req.user.nom || "Un acheteur";
     
     try {
         const [artworks] = await db.query(
@@ -72,11 +73,10 @@ exports.createOrder = async (req, res) => {
             [buyerId, artworkId, artwork.price]
         );
         
-        // 🔔 Notification à l'artiste
         await notificationController.createNotification(
             artwork.seller_id,
             'order',
-            `${req.user.nom} a acheté votre œuvre "${artwork.title}"`,
+            `${buyerName} souhaite acheter votre œuvre "${artwork.title}"`,
             artworkId
         );
         
@@ -103,7 +103,7 @@ exports.confirmOrder = async (req, res) => {
     
     try {
         const [orders] = await db.query(
-            `SELECT o.*, a.user_id as seller_id, a.id as artwork_id
+            `SELECT o.*, a.user_id as seller_id, a.id as artwork_id, a.title as artwork_title
              FROM orders o
              JOIN artworks a ON o.artwork_id = a.id
              WHERE o.id = ?`,
@@ -127,7 +127,6 @@ exports.confirmOrder = async (req, res) => {
         await db.query('UPDATE orders SET status = "confirmed" WHERE id = ?', [orderId]);
         await db.query('UPDATE artworks SET is_sold = TRUE WHERE id = ?', [order.artwork_id]);
         
-        // 🔔 Notification à l'acheteur
         await notificationController.createNotification(
             order.buyer_id,
             'order_confirmed',
@@ -150,7 +149,7 @@ exports.refuseOrder = async (req, res) => {
     
     try {
         const [orders] = await db.query(
-            `SELECT o.*, a.user_id as seller_id, a.title as artwork_title
+            `SELECT o.*, a.user_id as seller_id, a.title as artwork_title, a.id as artwork_id
              FROM orders o
              JOIN artworks a ON o.artwork_id = a.id
              WHERE o.id = ?`,
@@ -173,7 +172,6 @@ exports.refuseOrder = async (req, res) => {
         
         await db.query('UPDATE orders SET status = "refused" WHERE id = ?', [orderId]);
         
-        // 🔔 Notification à l'acheteur
         await notificationController.createNotification(
             order.buyer_id,
             'order_refused',
@@ -196,7 +194,7 @@ exports.cancelOrder = async (req, res) => {
     
     try {
         const [orders] = await db.query(
-            `SELECT o.*, a.user_id as seller_id, a.title as artwork_title
+            `SELECT o.*, a.user_id as seller_id, a.title as artwork_title, a.id as artwork_id
              FROM orders o
              JOIN artworks a ON o.artwork_id = a.id
              WHERE o.id = ?`,
@@ -223,7 +221,6 @@ exports.cancelOrder = async (req, res) => {
         
         await db.query('UPDATE orders SET status = "cancelled" WHERE id = ?', [orderId]);
         
-        // 🔔 Notification à l'artiste
         await notificationController.createNotification(
             order.seller_id,
             'order_cancelled',

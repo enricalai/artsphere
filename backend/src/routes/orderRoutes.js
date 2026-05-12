@@ -8,5 +8,5 @@ router.put('/confirm/:orderId', authMiddleware, orderController.confirmOrder);
 router.put('/cancel/:orderId', authMiddleware, orderController.cancelOrder);
 router.get('/my-orders', authMiddleware, orderController.getMyOrders);
 router.get('/my-sales', authMiddleware, orderController.getMySales);
-
+router.put('/refuse/:orderId', authMiddleware, orderController.refuseOrder);
 module.exports = router;

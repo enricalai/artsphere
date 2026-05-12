@@ -1,22 +1,21 @@
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const db = require('../config/db');
+const fs = require('fs');
+const path = require('path');
 
 // INSCRIPTION
 exports.register = async (req, res) => {
     const { email, password, nom, sexe, age, ville, pays, bio } = req.body;
     
-    // Vérifications de base
     if (!email || !password || !nom || !sexe) {
         return res.status(400).json({ error: 'Email, mot de passe, nom et sexe sont requis' });
     }
     
-    // Validation du sexe
     if (!['homme', 'femme'].includes(sexe)) {
         return res.status(400).json({ error: 'Le sexe doit être "homme" ou "femme"' });
     }
     
-    // Validation de l'âge (entre 13 et 80 ans)
     if (age !== undefined && age !== null && age !== '') {
         const ageNum = parseInt(age);
         if (isNaN(ageNum) || ageNum < 13 || ageNum > 80) {
@@ -139,17 +138,19 @@ exports.getProfile = async (req, res) => {
     }
 };
 
-// MODIFIER SON PROFIL
+// MODIFIER SON PROFIL (avec suppression d'avatar possible)
 exports.updateProfile = async (req, res) => {
-    const { nom, sexe, age, ville, pays, bio } = req.body;
+    const { nom, sexe, age, ville, pays, bio, deleteAvatar } = req.body;
     let avatar_url = null;
+    let query = 'UPDATE users SET nom = ?, sexe = ?, age = ?, ville = ?, pays = ?, bio = ?';
+    let params = [nom || null, sexe || null, age || null, ville || null, pays || null, bio || null];
 
     // Validation du sexe
     if (sexe && !['homme', 'femme'].includes(sexe)) {
         return res.status(400).json({ error: 'Le sexe doit être "homme" ou "femme"' });
     }
 
-    // Validation de l'âge (entre 13 et 80 ans)
+    // Validation de l'âge
     if (age !== undefined && age !== null && age !== '') {
         const ageNum = parseInt(age);
         if (isNaN(ageNum) || ageNum < 13 || ageNum > 80) {
@@ -157,15 +158,35 @@ exports.updateProfile = async (req, res) => {
         }
     }
     
-    if (req.file) {
-        avatar_url = req.file.path;
-    }
-    
     try {
-        let query = 'UPDATE users SET nom = ?, sexe = ?, age = ?, ville = ?, pays = ?, bio = ?';
-        let params = [nom || null, sexe || null, age || null, ville || null, pays || null, bio || null];
+        // Récupérer l'ancien avatar
+        const [userInfo] = await db.query('SELECT avatar_url FROM users WHERE id = ?', [req.user.id]);
+        const oldAvatar = userInfo[0]?.avatar_url;
         
-        if (avatar_url) {
+        // Suppression demandée
+        if (deleteAvatar === 'true') {
+            if (oldAvatar && fs.existsSync(oldAvatar)) {
+                try {
+                    fs.unlinkSync(oldAvatar);
+                    console.log('✅ Ancien avatar supprimé:', oldAvatar);
+                } catch (err) {
+                    console.error('Erreur suppression fichier:', err);
+                }
+            }
+            query += ', avatar_url = NULL';
+        }
+        
+        // Nouvelle image uploadée
+        if (req.file && deleteAvatar !== 'true') {
+            if (oldAvatar && fs.existsSync(oldAvatar)) {
+                try {
+                    fs.unlinkSync(oldAvatar);
+                    console.log('✅ Ancien avatar supprimé:', oldAvatar);
+                } catch (err) {
+                    console.error('Erreur suppression fichier:', err);
+                }
+            }
+            avatar_url = req.file.path;
             query += ', avatar_url = ?';
             params.push(avatar_url);
         }
@@ -175,9 +196,19 @@ exports.updateProfile = async (req, res) => {
         
         await db.query(query, params);
         
+        // Retourner la nouvelle URL
+        let newAvatarUrl = null;
+        if (deleteAvatar === 'true') {
+            newAvatarUrl = null;
+        } else if (avatar_url) {
+            newAvatarUrl = avatar_url;
+        } else {
+            newAvatarUrl = oldAvatar;
+        }
+        
         res.json({ 
             message: 'Profil mis à jour avec succès',
-            avatar_url: avatar_url || undefined
+            avatar_url: newAvatarUrl
         });
         
     } catch (error) {
