@@ -16,11 +16,13 @@ const adminRoutes = require('./src/routes/adminRoutes');
 const reportRoutes = require('./src/routes/reportRoutes');
 const notificationRoutes = require('./src/routes/notificationRoutes');
 const pdfRoutes = require('./src/routes/pdfRoutes');
+const publicUserRoutes = require('./src/routes/publicUserRoutes'); // Ajout des routes utilisateurs publiques
+
 // Middleware
 app.use(cors());
 app.use(express.json());
 app.use('/uploads', express.static('uploads'));
-app.use('/api/pdf', pdfRoutes);
+
 // Routes de test
 app.get('/', (req, res) => {
     res.json({ message: '🎨 API ArtSphere est en ligne !' });
@@ -44,7 +46,8 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/notifications', notificationRoutes);
-app.use('/api/pdf', pdfRoutes); // Ajout de la route PDF après les autres routes
+app.use('/api/pdf', pdfRoutes);
+app.use('/api/public/users', publicUserRoutes); // Routes utilisateurs publiques
 
 // Démarrer le serveur
 app.listen(PORT, () => {
