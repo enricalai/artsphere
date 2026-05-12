@@ -1,0 +1,35 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-creme text-anthracite font-sans;
+    background-image: radial-gradient(circle at 25% 50%, rgba(0,0,0,0.02) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+  
+  h1, h2, h3, .artwork-title {
+    @apply font-serif;
+  }
+  
+  button, a, .menu-item {
+    @apply font-sans;
+  }
+  
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  ::-webkit-scrollbar-track {
+    @apply bg-creme;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    @apply bg-anthracite/30 rounded-full;
+  }
+  
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-anthracite/50;
+  }
+}
