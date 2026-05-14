@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { getProfile, updateProfile } from '../services/api';
+import { getProfile, updateProfile, changePassword } from '../services/api';
 import Avatar from '../components/ui/Avatar';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
@@ -24,6 +24,17 @@ function Profile() {
     const [showDeleteAvatarModal, setShowDeleteAvatarModal] = useState(false);
     const [deletingAvatar, setDeletingAvatar] = useState(false);
     const [deleting, setDeleting] = useState(false);
+
+    // États pour changement mot de passe
+    const [showPasswordModal, setShowPasswordModal] = useState(false);
+    const [passwordData, setPasswordData] = useState({
+        oldPassword: '',
+        newPassword: '',
+        confirmPassword: ''
+    });
+    const [passwordError, setPasswordError] = useState('');
+    const [passwordSuccess, setPasswordSuccess] = useState('');
+    const [changingPassword, setChangingPassword] = useState(false);
 
     useEffect(() => {
         loadProfile();
@@ -130,6 +141,39 @@ function Profile() {
         } finally {
             setDeletingAvatar(false);
             setShowDeleteAvatarModal(false);
+        }
+    };
+
+    const handlePasswordChange = async (e) => {
+        e.preventDefault();
+        setPasswordError('');
+        setPasswordSuccess('');
+
+        if (passwordData.newPassword !== passwordData.confirmPassword) {
+            setPasswordError('Les nouveaux mots de passe ne correspondent pas');
+            return;
+        }
+        if (passwordData.newPassword.length < 6) {
+            setPasswordError('Le mot de passe doit contenir au moins 6 caractères');
+            return;
+        }
+
+        setChangingPassword(true);
+        try {
+            await changePassword({
+                oldPassword: passwordData.oldPassword,
+                newPassword: passwordData.newPassword
+            });
+            setPasswordSuccess('Mot de passe modifié avec succès');
+            setPasswordData({ oldPassword: '', newPassword: '', confirmPassword: '' });
+            setTimeout(() => {
+                setPasswordSuccess('');
+                setShowPasswordModal(false);
+            }, 2000);
+        } catch (err) {
+            setPasswordError(err.response?.data?.error || 'Erreur lors du changement de mot de passe');
+        } finally {
+            setChangingPassword(false);
         }
     };
 
@@ -292,12 +336,88 @@ function Profile() {
 
                 <button
                     type="button"
+                    onClick={() => setShowPasswordModal(true)}
+                    className="w-full mt-2 bg-anthracite/10 text-anthracite px-6 py-2 font-sans text-sm tracking-wide hover:bg-anthracite/20 transition-colors"
+                >
+                    🔑 Changer mon mot de passe
+                </button>
+
+                <button
+                    type="button"
                     onClick={() => setShowDeleteConfirm(true)}
-                    className="w-full mt-4 bg-red-500 text-white px-6 py-2 font-sans text-sm tracking-wide hover:bg-red-600 transition-colors"
+                    className="w-full mt-2 bg-red-500 text-white px-6 py-2 font-sans text-sm tracking-wide hover:bg-red-600 transition-colors"
                 >
                     Supprimer mon compte
                 </button>
             </form>
+
+            {/* Modal changement mot de passe */}
+            {showPasswordModal && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                    <div className="bg-creme max-w-md mx-4 p-6 rounded-sm shadow-xl">
+                        <h3 className="font-serif text-xl text-anthracite mb-4">Changer le mot de passe</h3>
+                        <form onSubmit={handlePasswordChange} className="space-y-4">
+                            <Input
+                                label="Ancien mot de passe"
+                                type="password"
+                                value={passwordData.oldPassword}
+                                onChange={(e) => setPasswordData({ ...passwordData, oldPassword: e.target.value })}
+                                required
+                                placeholder="••••••"
+                            />
+                            <Input
+                                label="Nouveau mot de passe"
+                                type="password"
+                                value={passwordData.newPassword}
+                                onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
+                                required
+                                placeholder="Minimum 6 caractères"
+                            />
+                            <Input
+                                label="Confirmer le nouveau mot de passe"
+                                type="password"
+                                value={passwordData.confirmPassword}
+                                onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
+                                required
+                                placeholder="••••••"
+                            />
+                            
+                            {passwordError && (
+                                <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-2 rounded-sm text-sm">
+                                    {passwordError}
+                                </div>
+                            )}
+                            {passwordSuccess && (
+                                <div className="bg-green-50 border border-green-200 text-green-600 px-4 py-2 rounded-sm text-sm">
+                                    {passwordSuccess}
+                                </div>
+                            )}
+                            
+                            <div className="flex justify-end gap-3 mt-4">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setShowPasswordModal(false);
+                                        setPasswordError('');
+                                        setPasswordSuccess('');
+                                        setPasswordData({ oldPassword: '', newPassword: '', confirmPassword: '' });
+                                    }}
+                                    className="px-4 py-2 text-anthracite/60 hover:text-anthracite"
+                                >
+                                    Annuler
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={changingPassword}
+                                    className="bg-prusse text-white px-4 py-2 hover:bg-prusse/90 disabled:opacity-50"
+                                >
+                                    {changingPassword ? 'Modification...' : 'Changer le mot de passe'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
 
             {/* Modal suppression avatar */}
             {showDeleteAvatarModal && (

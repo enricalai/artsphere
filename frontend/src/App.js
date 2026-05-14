@@ -17,6 +17,9 @@ import ArtworkDetail from './pages/ArtworkDetail';
 import EditArtwork from './pages/EditArtwork';
 import SearchUsersPublic from './pages/SearchUsersPublic';
 import PublicUserProfile from './pages/PublicUserProfile'; // Ajout de la page de profil public
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
+
 
 const PrivateRoute = ({ children }) => {
     const { isAuthenticated, loading } = useAuth();
@@ -50,6 +53,8 @@ function AppRoutes() {
                     <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
                     <Route path="/search" element={<PrivateRoute><SearchUsersPublic /></PrivateRoute>} />
                     <Route path="/user/:id" element={<PrivateRoute><PublicUserProfile /></PrivateRoute>} />
+                    <Route path="/forgot-password" element={<ForgotPassword />} />
+                    <Route path="/reset-password" element={<ResetPassword />} />
                 </Routes>
             </main>
         </div>
