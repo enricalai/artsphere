@@ -24,12 +24,11 @@ export const updateProfile = (data) => {
     });
 };
 export const changePassword = (data) => api.put('/auth/change-password', data);
-export const forgotPassword = (email) => api.post('/auth/forgot-password', { email });
+export const forgotPassword = (email, source) => 
+    api.post('/auth/forgot-password', { email, source });
 export const resetPassword = (token, newPassword) => api.post('/auth/reset-password', { token, newPassword });
 
-// ============================================
 // ARTWORKS
-// ============================================
 export const getArtworks = () => api.get('/artworks');
 export const getArtworkById = (id) => api.get(`/artworks/${id}`);
 export const createArtwork = (formData) => api.post('/artworks', formData, {
@@ -52,7 +51,7 @@ export const deleteComment = (commentId) => api.delete(`/comments/${commentId}`)
 // ORDERS
 export const buyArtwork = (artworkId) => api.post(`/orders/buy/${artworkId}`);
 export const confirmOrder = (orderId) => api.put(`/orders/confirm/${orderId}`);
-export const refuseOrder = (orderId) => api.put(`/orders/refuse/${orderId}`); // Ajout de la fonction refuseOrder
+export const refuseOrder = (orderId) => api.put(`/orders/refuse/${orderId}`);
 export const cancelOrder = (orderId) => api.put(`/orders/cancel/${orderId}`);
 export const getMyOrders = () => api.get('/orders/my-orders');
 export const getMySales = () => api.get('/orders/my-sales');
@@ -76,7 +75,7 @@ export const getMyNotifications = () => api.get('/notifications');
 export const markAsRead = (notificationId) => api.put(`/notifications/${notificationId}/read`);
 export const markAllAsRead = () => api.put('/notifications/read-all');
 
-// PUBLIC USERS (recherche d'utilisateurs)
+// PUBLIC USERS
 export const searchUsersPublic = (query) => 
     api.get(`/public/users/search?q=${encodeURIComponent(query)}`);
 

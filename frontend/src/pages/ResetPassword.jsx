@@ -1,13 +1,17 @@
 import React, { useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { resetPassword } from '../services/api';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
+import { useAuth } from '../context/AuthContext';
 
 function ResetPassword() {
     const [searchParams] = useSearchParams();
-    const token = searchParams.get('token');
     const navigate = useNavigate();
+    const { login } = useAuth();
+    
+    const token = searchParams.get('token');
+    const source = searchParams.get('source') || 'login';
 
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
@@ -40,9 +44,17 @@ function ResetPassword() {
         try {
             const response = await resetPassword(token, newPassword);
             setMessage(response.data.message);
-            setTimeout(() => {
-                navigate('/login');
-            }, 3000);
+
+            if (source === 'profile') {
+                await login(response.data.email, newPassword);
+                setTimeout(() => {
+                    navigate('/gallery');
+                }, 1500);
+            } else {
+                setTimeout(() => {
+                    navigate('/login');
+                }, 2000);
+            }
         } catch (err) {
             setError(err.response?.data?.error || 'Erreur lors de la réinitialisation');
         } finally {
@@ -68,6 +80,11 @@ function ResetPassword() {
                 <p className="font-sans text-anthracite/60 mt-2">
                     Choisissez un nouveau mot de passe
                 </p>
+                {source === 'profile' && (
+                    <p className="font-sans text-sm text-prusse mt-2">
+                        Vous allez être reconnecté automatiquement après la modification
+                    </p>
+                )}
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-6">
@@ -106,6 +123,12 @@ function ResetPassword() {
                 <Button type="submit" variant="primary" disabled={loading} className="w-full">
                     {loading ? 'Réinitialisation...' : 'Réinitialiser le mot de passe'}
                 </Button>
+                
+                <div className="text-center mt-4">
+                    <Link to="/login" className="text-sm text-prusse hover:underline">
+                        Retour à la connexion
+                    </Link>
+                </div>
             </form>
         </div>
     );

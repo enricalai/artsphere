@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { forgotPassword } from '../services/api';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 
 function ForgotPassword() {
+    const location = useLocation();
+    const source = location.state?.from || 'login';
     const [email, setEmail] = useState('');
     const [loading, setLoading] = useState(false);
     const [message, setMessage] = useState('');
@@ -17,7 +19,7 @@ function ForgotPassword() {
         setError('');
 
         try {
-            const response = await forgotPassword(email);
+            const response = await forgotPassword(email, source);
             setMessage(response.data.message);
         } catch (err) {
             setError(err.response?.data?.error || 'Erreur lors de la demande');

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getProfile, updateProfile, changePassword } from '../services/api';
 import Avatar from '../components/ui/Avatar';
@@ -22,11 +23,10 @@ function Profile() {
     const [error, setError] = useState('');
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [showDeleteAvatarModal, setShowDeleteAvatarModal] = useState(false);
+    const [showPasswordModal, setShowPasswordModal] = useState(false);
     const [deletingAvatar, setDeletingAvatar] = useState(false);
     const [deleting, setDeleting] = useState(false);
-
-    // États pour changement mot de passe
-    const [showPasswordModal, setShowPasswordModal] = useState(false);
+    const [changingPassword, setChangingPassword] = useState(false);
     const [passwordData, setPasswordData] = useState({
         oldPassword: '',
         newPassword: '',
@@ -34,17 +34,9 @@ function Profile() {
     });
     const [passwordError, setPasswordError] = useState('');
     const [passwordSuccess, setPasswordSuccess] = useState('');
-    const [changingPassword, setChangingPassword] = useState(false);
 
     useEffect(() => {
         loadProfile();
-        
-        // Nettoyer l'URL temporaire lors du démontage du composant
-        return () => {
-            if (avatarPreview && avatarPreview.startsWith('blob:')) {
-                URL.revokeObjectURL(avatarPreview);
-            }
-        };
     }, []);
 
     const loadProfile = async () => {
@@ -61,8 +53,6 @@ function Profile() {
             });
             if (profile.avatar_url) {
                 setAvatarPreview(`http://localhost:5000/${profile.avatar_url}`);
-            } else {
-                setAvatarPreview('');
             }
         } catch (err) {
             console.error(err);
@@ -102,12 +92,7 @@ function Profile() {
                 return;
             }
             setAvatarFile(file);
-            // 🔥 Crée une URL temporaire pour l'aperçu
             const previewUrl = URL.createObjectURL(file);
-            // Nettoyer l'ancienne URL temporaire si elle existe
-            if (avatarPreview && avatarPreview.startsWith('blob:')) {
-                URL.revokeObjectURL(avatarPreview);
-            }
             setAvatarPreview(previewUrl);
         }
     };
@@ -131,49 +116,13 @@ function Profile() {
             const response = await updateProfile(submitData);
             updateUser({ ...formData, avatar_url: null });
             setAvatarPreview('');
-            setAvatarFile(null);
             setMessage('Photo de profil supprimée avec succès');
-            setTimeout(() => setMessage(''), 3000);
-            await loadProfile();
+            loadProfile();
         } catch (err) {
             setMessage(err.response?.data?.error || 'Erreur lors de la suppression');
-            setTimeout(() => setMessage(''), 3000);
         } finally {
             setDeletingAvatar(false);
             setShowDeleteAvatarModal(false);
-        }
-    };
-
-    const handlePasswordChange = async (e) => {
-        e.preventDefault();
-        setPasswordError('');
-        setPasswordSuccess('');
-
-        if (passwordData.newPassword !== passwordData.confirmPassword) {
-            setPasswordError('Les nouveaux mots de passe ne correspondent pas');
-            return;
-        }
-        if (passwordData.newPassword.length < 6) {
-            setPasswordError('Le mot de passe doit contenir au moins 6 caractères');
-            return;
-        }
-
-        setChangingPassword(true);
-        try {
-            await changePassword({
-                oldPassword: passwordData.oldPassword,
-                newPassword: passwordData.newPassword
-            });
-            setPasswordSuccess('Mot de passe modifié avec succès');
-            setPasswordData({ oldPassword: '', newPassword: '', confirmPassword: '' });
-            setTimeout(() => {
-                setPasswordSuccess('');
-                setShowPasswordModal(false);
-            }, 2000);
-        } catch (err) {
-            setPasswordError(err.response?.data?.error || 'Erreur lors du changement de mot de passe');
-        } finally {
-            setChangingPassword(false);
         }
     };
 
@@ -231,13 +180,44 @@ function Profile() {
             updateUser({ ...formData, avatar_url: response.data.avatar_url });
             setMessage('Profil mis à jour avec succès');
             setTimeout(() => setMessage(''), 3000);
-            // Recharger le profil pour avoir la nouvelle URL de l'avatar
-            await loadProfile();
         } catch (err) {
             setMessage(err.response?.data?.error || 'Erreur lors de la mise à jour');
-            setTimeout(() => setMessage(''), 3000);
         } finally {
             setLoading(false);
+        }
+    };
+
+    // ========== CHANGEMENT DE MOT DE PASSE ==========
+    const handlePasswordChangeSubmit = async (e) => {
+        e.preventDefault();
+        setPasswordError('');
+        setPasswordSuccess('');
+
+        if (passwordData.newPassword !== passwordData.confirmPassword) {
+            setPasswordError('Les nouveaux mots de passe ne correspondent pas');
+            return;
+        }
+        if (passwordData.newPassword.length < 6) {
+            setPasswordError('Le mot de passe doit contenir au moins 6 caractères');
+            return;
+        }
+
+        setChangingPassword(true);
+        try {
+            await changePassword({
+                oldPassword: passwordData.oldPassword,
+                newPassword: passwordData.newPassword
+            });
+            setPasswordSuccess('Mot de passe modifié avec succès');
+            setPasswordData({ oldPassword: '', newPassword: '', confirmPassword: '' });
+            setTimeout(() => {
+                setPasswordSuccess('');
+                setShowPasswordModal(false);
+            }, 2000);
+        } catch (err) {
+            setPasswordError(err.response?.data?.error || 'Erreur lors du changement');
+        } finally {
+            setChangingPassword(false);
         }
     };
 
@@ -281,7 +261,7 @@ function Profile() {
             <form onSubmit={handleSubmit} className="space-y-6">
                 {/* Avatar */}
                 <div className="flex flex-col items-center mb-6">
-                    <Avatar src={avatarPreview ? avatarPreview.split('/').pop() : null} alt={formData.nom} size="xl" />
+                    <Avatar src={avatarPreview || user?.avatar_url} alt={formData.nom} size="xl" />
                     <label className="mt-3 cursor-pointer">
                         <span className="text-prusse text-sm font-sans hover:underline">Changer la photo de profil</span>
                         <input
@@ -291,15 +271,13 @@ function Profile() {
                             className="hidden"
                         />
                     </label>
-                    {avatarPreview && (
-                        <button
-                            type="button"
-                            onClick={handleDeleteAvatarClick}
-                            className="text-red-500 text-sm hover:underline mt-1"
-                        >
-                            Supprimer la photo
-                        </button>
-                    )}
+                    <button
+                        type="button"
+                        onClick={handleDeleteAvatarClick}
+                        className="text-red-500 text-sm hover:underline mt-1"
+                    >
+                        Supprimer la photo
+                    </button>
                 </div>
 
                 <Input label="Nom complet *" type="text" name="nom" value={formData.nom} onChange={handleChange} required />
@@ -334,6 +312,7 @@ function Profile() {
                     {loading ? 'Enregistrement...' : 'Enregistrer les modifications'}
                 </Button>
 
+                {/* Bouton Changer le mot de passe */}
                 <button
                     type="button"
                     onClick={() => setShowPasswordModal(true)}
@@ -345,79 +324,11 @@ function Profile() {
                 <button
                     type="button"
                     onClick={() => setShowDeleteConfirm(true)}
-                    className="w-full mt-2 bg-red-500 text-white px-6 py-2 font-sans text-sm tracking-wide hover:bg-red-600 transition-colors"
+                    className="w-full mt-4 bg-red-500 text-white px-6 py-2 font-sans text-sm tracking-wide hover:bg-red-600 transition-colors"
                 >
                     Supprimer mon compte
                 </button>
             </form>
-
-            {/* Modal changement mot de passe */}
-            {showPasswordModal && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                    <div className="bg-creme max-w-md mx-4 p-6 rounded-sm shadow-xl">
-                        <h3 className="font-serif text-xl text-anthracite mb-4">Changer le mot de passe</h3>
-                        <form onSubmit={handlePasswordChange} className="space-y-4">
-                            <Input
-                                label="Ancien mot de passe"
-                                type="password"
-                                value={passwordData.oldPassword}
-                                onChange={(e) => setPasswordData({ ...passwordData, oldPassword: e.target.value })}
-                                required
-                                placeholder="••••••"
-                            />
-                            <Input
-                                label="Nouveau mot de passe"
-                                type="password"
-                                value={passwordData.newPassword}
-                                onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
-                                required
-                                placeholder="Minimum 6 caractères"
-                            />
-                            <Input
-                                label="Confirmer le nouveau mot de passe"
-                                type="password"
-                                value={passwordData.confirmPassword}
-                                onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
-                                required
-                                placeholder="••••••"
-                            />
-                            
-                            {passwordError && (
-                                <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-2 rounded-sm text-sm">
-                                    {passwordError}
-                                </div>
-                            )}
-                            {passwordSuccess && (
-                                <div className="bg-green-50 border border-green-200 text-green-600 px-4 py-2 rounded-sm text-sm">
-                                    {passwordSuccess}
-                                </div>
-                            )}
-                            
-                            <div className="flex justify-end gap-3 mt-4">
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setShowPasswordModal(false);
-                                        setPasswordError('');
-                                        setPasswordSuccess('');
-                                        setPasswordData({ oldPassword: '', newPassword: '', confirmPassword: '' });
-                                    }}
-                                    className="px-4 py-2 text-anthracite/60 hover:text-anthracite"
-                                >
-                                    Annuler
-                                </button>
-                                <button
-                                    type="submit"
-                                    disabled={changingPassword}
-                                    className="bg-prusse text-white px-4 py-2 hover:bg-prusse/90 disabled:opacity-50"
-                                >
-                                    {changingPassword ? 'Modification...' : 'Changer le mot de passe'}
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
 
             {/* Modal suppression avatar */}
             {showDeleteAvatarModal && (
@@ -435,6 +346,87 @@ function Profile() {
                                 {deletingAvatar ? 'Suppression...' : 'Oui, supprimer'}
                             </button>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal changement mot de passe */}
+            {showPasswordModal && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                    <div className="bg-creme max-w-md mx-4 p-6 rounded-sm shadow-xl">
+                        <h3 className="font-serif text-xl text-anthracite mb-4">Changer mon mot de passe</h3>
+                        <form onSubmit={handlePasswordChangeSubmit} className="space-y-4">
+                            <Input
+                                label="Ancien mot de passe"
+                                type="password"
+                                name="oldPassword"
+                                value={passwordData.oldPassword}
+                                onChange={(e) => setPasswordData({ ...passwordData, oldPassword: e.target.value })}
+                                required
+                            />
+                            <Input
+                                label="Nouveau mot de passe"
+                                type="password"
+                                name="newPassword"
+                                value={passwordData.newPassword}
+                                onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
+                                required
+                                placeholder="Au moins 6 caractères"
+                            />
+                            <Input
+                                label="Confirmer le nouveau mot de passe"
+                                type="password"
+                                name="confirmPassword"
+                                value={passwordData.confirmPassword}
+                                onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
+                                required
+                            />
+
+                            {/* Lien mot de passe oublié */}
+                            <div className="text-right">
+                                <Link 
+                                    to="/forgot-password" 
+                                    state={{ from: 'profile' }}
+                                    className="text-sm text-prusse hover:underline"
+                                    onClick={() => setShowPasswordModal(false)}
+                                >
+                                    Mot de passe oublié ?
+                                </Link>
+                            </div>
+
+                            {passwordError && (
+                                <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-2 rounded-sm text-sm">
+                                    {passwordError}
+                                </div>
+                            )}
+                            {passwordSuccess && (
+                                <div className="bg-green-50 border border-green-200 text-green-600 px-4 py-2 rounded-sm text-sm">
+                                    {passwordSuccess}
+                                </div>
+                            )}
+
+                            <div className="flex justify-end gap-3 pt-2">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setShowPasswordModal(false);
+                                        setPasswordError('');
+                                        setPasswordSuccess('');
+                                        setPasswordData({ oldPassword: '', newPassword: '', confirmPassword: '' });
+                                    }}
+                                    className="px-4 py-2 text-anthracite/60 hover:text-anthracite"
+                                >
+                                    Annuler
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={changingPassword}
+                                    className="bg-prusse text-white px-4 py-2 hover:bg-prusse/80 disabled:opacity-50"
+                                >
+                                    {changingPassword ? 'Modification...' : 'Modifier le mot de passe'}
+                                </button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             )}
