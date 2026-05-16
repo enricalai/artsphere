@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getArtworkById, addLike, removeLike, checkLike, buyArtwork, deleteArtwork } from '../services/api';
+import { getArtworkById, addLike, removeLike, checkLike, buyArtwork, deleteArtwork, createReport } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import Button from '../components/ui/Button';
 import CommentSection from '../components/CommentSection';
@@ -17,6 +17,9 @@ function ArtworkDetail() {
     const [error, setError] = useState('');
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [showBuyConfirm, setShowBuyConfirm] = useState(false);
+    const [showReportModal, setShowReportModal] = useState(false);
+    const [reportReason, setReportReason] = useState('');
+    const [reporting, setReporting] = useState(false);
     const [buying, setBuying] = useState(false);
     const [deleting, setDeleting] = useState(false);
     const [toast, setToast] = useState(null);
@@ -121,6 +124,31 @@ function ArtworkDetail() {
         }
     };
 
+    const handleReportClick = () => {
+        setShowReportModal(true);
+    };
+
+    const handleSubmitReport = async (e) => {
+        e.preventDefault();
+        if (!reportReason.trim()) return;
+
+        setReporting(true);
+        try {
+            await createReport({
+                targetArtworkId: parseInt(id),
+                reason: reportReason
+            });
+            setShowReportModal(false);
+            setReportReason('');
+            showToast('Signalement envoyé. Merci pour votre vigilance.', 'success');
+        } catch (err) {
+            console.error(err);
+            showToast(err.response?.data?.error || 'Erreur lors du signalement', 'error');
+        } finally {
+            setReporting(false);
+        }
+    };
+
     const isOwner = user?.id === artwork?.user_id;
 
     const getCategoryIcon = () => {
@@ -133,115 +161,198 @@ function ArtworkDetail() {
     };
 
     if (loading) {
-        return <div className="max-w-7xl mx-auto px-4 py-12 text-center text-anthracite/60">Chargement...</div>;
+        return (
+            <div className="max-w-7xl mx-auto px-4 py-12">
+                <div className="text-center text-anthracite/60">Chargement...</div>
+            </div>
+        );
     }
 
     if (error || !artwork) {
-        return <div className="max-w-7xl mx-auto px-4 py-12 text-center text-red-500">{error || 'Œuvre non trouvée'}</div>;
+        return (
+            <div className="max-w-7xl mx-auto px-4 py-12">
+                <div className="text-center text-red-500">{error || 'Œuvre non trouvée'}</div>
+            </div>
+        );
     }
 
     return (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 animate-fade-in">
             {toast && (
-                <div className={`fixed bottom-4 right-4 z-50 px-4 py-2 rounded-sm shadow-lg text-white ${toast.type === 'error' ? 'bg-red-500' : 'bg-green-500'}`}>
+                <div className={`fixed bottom-4 right-4 z-50 px-4 py-2 rounded-sm shadow-lg text-white ${
+                    toast.type === 'error' ? 'bg-red-500' : 'bg-green-500'
+                }`}>
                     {toast.message}
                 </div>
             )}
 
-            {isOwner && (
-                <div className="flex justify-end gap-3 mb-6">
-                    <button onClick={handleEdit} className="bg-prusse text-white px-4 py-2 text-sm rounded hover:bg-prusse/80">✏️ Modifier</button>
-                    <button onClick={handleDeleteClick} className="bg-red-500 text-white px-4 py-2 text-sm rounded hover:bg-red-600">🗑️ Supprimer</button>
-                </div>
-            )}
+            {/* Boutons Modifier/Supprimer (propriétaire) + Signaler (autres) */}
+            <div className="flex justify-end gap-3 mb-6">
+                {isOwner ? (
+                    <>
+                        <button
+                            onClick={handleEdit}
+                            className="bg-prusse text-white px-4 py-2 font-sans text-sm hover:bg-prusse/80 transition-colors rounded"
+                        >
+                            ✏️ Modifier
+                        </button>
+                        <button
+                            onClick={handleDeleteClick}
+                            className="bg-red-500 text-white px-4 py-2 font-sans text-sm hover:bg-red-600 transition-colors rounded"
+                        >
+                            🗑️ Supprimer
+                        </button>
+                    </>
+                ) : (
+                    user && (
+                        <button
+                            onClick={handleReportClick}
+                            className="bg-amber-500 text-white px-4 py-2 font-sans text-sm hover:bg-amber-600 transition-colors rounded"
+                        >
+                            ⚠️ Signaler
+                        </button>
+                    )
+                )}
+            </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+                {/* Colonne gauche - Image */}
                 <div>
                     <div className="bg-creme overflow-hidden border border-anthracite/5 rounded-sm">
-                        <img src={fixImageUrl(artwork.image_url)} alt={artwork.title} className="w-full h-auto object-cover" />
+                        <img
+                            src={fixImageUrl(artwork.image_url)}
+                            alt={artwork.title}
+                            className="w-full h-auto object-cover"
+                        />
                     </div>
 
-                    {artwork.is_available && artwork.price && !artwork.is_sold && user?.id !== artwork.user_id && (
+                    {artwork.is_available && artwork.price && !artwork.is_sold && !isOwner && (
                         <div className="mt-6">
-                            <Button variant="primary" className="w-full" onClick={handleBuyClick}>Acheter {artwork.price} €</Button>
+                            <Button variant="primary" className="w-full" onClick={handleBuyClick}>
+                                Acheter {artwork.price} €
+                            </Button>
                         </div>
                     )}
+
                     {!artwork.is_available && (
                         <div className="mt-6 p-3 bg-anthracite/5 text-center rounded-sm">
-                            <p className="text-sm text-anthracite/50">Cette œuvre n'est pas disponible à la vente</p>
+                            <p className="font-sans text-sm text-anthracite/50">Cette œuvre n'est pas disponible à la vente</p>
                         </div>
                     )}
+
                     {artwork.is_sold && (
                         <div className="mt-6 p-3 bg-green-50 text-center rounded-sm">
-                            <p className="text-sm text-green-600">✓ Cette œuvre a été vendue</p>
+                            <p className="font-sans text-sm text-green-600">✓ Cette œuvre a été vendue</p>
                         </div>
                     )}
                 </div>
 
+                {/* Colonne droite - Informations */}
                 <div>
                     <div className="flex items-center gap-2 mb-2">
                         <span className="text-xl">{getCategoryIcon()}</span>
-                        <span className="text-sm text-anthracite/50">{artwork.category}</span>
+                        <span className="font-sans text-sm text-anthracite/50">{artwork.category}</span>
                     </div>
                     <h1 className="font-serif text-3xl md:text-4xl text-anthracite">{artwork.title}</h1>
-                    <p className="text-anthracite/60 mt-2">Par {artwork.artist_name}</p>
+                    <p className="font-sans text-anthracite/60 mt-2">
+                        Par {artwork.artist_name}
+                    </p>
 
                     <div className="mt-6 border-t border-anthracite/10 pt-6">
                         <h2 className="font-serif text-xl text-anthracite mb-3">Cartel technique</h2>
-                        <div className="space-y-2 text-sm">
-                            {artwork.medium && <p><span className="text-anthracite/60">Médium :</span> {artwork.medium}</p>}
-                            {artwork.dimensions && <p><span className="text-anthracite/60">Dimensions :</span> {artwork.dimensions}</p>}
-                            {artwork.format && <p><span className="text-anthracite/60">Format :</span> {artwork.format}</p>}
-                            {artwork.price && <p><span className="text-anthracite/60">Prix :</span> <span className="text-prusse font-medium">{artwork.price} €</span></p>}
+                        <div className="space-y-2 font-sans text-sm">
+                            {artwork.medium && (
+                                <p><span className="text-anthracite/60">Médium :</span> {artwork.medium}</p>
+                            )}
+                            {artwork.dimensions && (
+                                <p><span className="text-anthracite/60">Dimensions :</span> {artwork.dimensions}</p>
+                            )}
+                            {artwork.format && (
+                                <p><span className="text-anthracite/60">Format :</span> {artwork.format}</p>
+                            )}
+                            {artwork.price && (
+                                <p><span className="text-anthracite/60">Prix :</span> <span className="text-prusse font-medium">{artwork.price} €</span></p>
+                            )}
                         </div>
                     </div>
 
                     {artwork.description && (
                         <div className="mt-6 border-t border-anthracite/10 pt-6">
                             <h2 className="font-serif text-xl text-anthracite mb-3">Description</h2>
-                            <p className="text-anthracite/80 leading-relaxed">{artwork.description}</p>
+                            <p className="font-sans text-anthracite/80 leading-relaxed">{artwork.description}</p>
                         </div>
                     )}
 
                     <div className="mt-6 border-t border-anthracite/10 pt-6 flex items-center gap-4">
-                        <button onClick={handleLike} className={`text-sm tracking-wide transition-colors ${liked ? 'text-prusse' : 'text-anthracite/60 hover:text-prusse'}`}>
+                        <button
+                            onClick={handleLike}
+                            className={`font-sans text-sm tracking-wide transition-colors ${liked ? 'text-prusse' : 'text-anthracite/60 hover:text-prusse'}`}
+                        >
                             {liked ? '❤️ J\'aime' : '♡ J\'aime'}
                         </button>
-                        <span className="text-sm text-anthracite/60">{likesCount} {likesCount === 1 ? 'like' : 'likes'}</span>
+                        <span className="font-sans text-sm text-anthracite/60">{likesCount} {likesCount === 1 ? 'like' : 'likes'}</span>
                     </div>
                 </div>
             </div>
 
             <CommentSection artworkId={id} />
 
+            {/* Modal achat */}
             {showBuyConfirm && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
                     <div className="bg-creme max-w-md mx-4 p-6 rounded-sm shadow-xl">
                         <h3 className="font-serif text-xl text-anthracite mb-4">Confirmer l'achat</h3>
-                        <p className="mb-2">Vous êtes sur le point d'acheter :</p>
-                        <p className="font-serif text-lg mb-4">{artwork.title} - {artwork.price} €</p>
+                        <p className="font-sans text-anthracite/70 mb-2">Vous êtes sur le point d'acheter :</p>
+                        <p className="font-serif text-lg text-anthracite mb-4">{artwork.title} - {artwork.price} €</p>
                         <div className="flex justify-end gap-3">
                             <button onClick={() => setShowBuyConfirm(false)} className="px-4 py-2 text-anthracite/60 hover:text-anthracite">Annuler</button>
-                            <button onClick={handleConfirmBuy} disabled={buying} className="bg-prusse text-white px-4 py-2 rounded hover:bg-prusse/80">
-                                {buying ? 'Achat...' : 'Confirmer l\'achat'}
+                            <button onClick={handleConfirmBuy} disabled={buying} className="bg-prusse text-white px-4 py-2 hover:bg-prusse/80 rounded">
+                                {buying ? 'Achat...' : 'Confirmer'}
                             </button>
                         </div>
                     </div>
                 </div>
             )}
 
+            {/* Modal suppression */}
             {showDeleteConfirm && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
                     <div className="bg-creme max-w-md mx-4 p-6 rounded-sm shadow-xl">
                         <h3 className="font-serif text-xl text-anthracite mb-4">🗑️ Supprimer l'œuvre</h3>
-                        <p className="mb-4">Êtes-vous sûr de vouloir supprimer cette œuvre ?</p>
-                        <p className="mb-6 font-semibold">Cette action est irréversible.</p>
+                        <p className="font-sans text-anthracite/70 mb-4">Êtes-vous sûr de vouloir supprimer cette œuvre ?</p>
+                        <p className="font-sans text-anthracite/70 mb-6 font-semibold">Cette action est irréversible.</p>
                         <div className="flex justify-end gap-3">
                             <button onClick={() => setShowDeleteConfirm(false)} className="px-4 py-2 text-anthracite/60 hover:text-anthracite">Annuler</button>
-                            <button onClick={handleConfirmDelete} disabled={deleting} className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600">
+                            <button onClick={handleConfirmDelete} disabled={deleting} className="bg-red-500 text-white px-4 py-2 hover:bg-red-600 rounded">
                                 {deleting ? 'Suppression...' : 'Oui, supprimer'}
                             </button>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal signalement */}
+            {showReportModal && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                    <div className="bg-creme max-w-md mx-4 p-6 rounded-sm shadow-xl">
+                        <h3 className="font-serif text-xl text-anthracite mb-4">⚠️ Signaler cette œuvre</h3>
+                        <form onSubmit={handleSubmitReport}>
+                            <textarea
+                                value={reportReason}
+                                onChange={(e) => setReportReason(e.target.value)}
+                                placeholder="Décrivez la raison de votre signalement (contenu inapproprié, plagiat, etc.)..."
+                                className="w-full px-4 py-2 border border-anthracite/20 focus:border-prusse outline-none min-h-[120px] mb-4 rounded-sm"
+                                required
+                            />
+                            <div className="flex justify-end gap-3">
+                                <button type="button" onClick={() => setShowReportModal(false)} className="px-4 py-2 text-anthracite/60 hover:text-anthracite">
+                                    Annuler
+                                </button>
+                                <button type="submit" disabled={reporting} className="bg-amber-500 text-white px-4 py-2 hover:bg-amber-600 disabled:opacity-50 rounded">
+                                    {reporting ? 'Envoi...' : 'Envoyer le signalement'}
+                                </button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             )}
