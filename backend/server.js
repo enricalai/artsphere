@@ -18,7 +18,7 @@ const notificationRoutes = require('./src/routes/notificationRoutes');
 const pdfRoutes = require('./src/routes/pdfRoutes');
 const publicUserRoutes = require('./src/routes/publicUserRoutes'); // Ajout des routes utilisateurs publiques
 
-// Middleware
+// Middleware (AVANT les routes)
 app.use(cors());
 app.use(express.json());
 app.use('/uploads', express.static('uploads'));
@@ -38,17 +38,17 @@ app.get('/test-db', async (req, res) => {
 });
 
 // API Routes
+// API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/artworks', artworkRoutes);
 app.use('/api/likes', likeRoutes);
 app.use('/api/comments', commentRoutes);
 app.use('/api/orders', orderRoutes);
-app.use('/api/admin', adminRoutes);
-app.use('/api/reports', reportRoutes);
+app.use('/api/admin', adminRoutes);      // Routes admin protégées
+app.use('/api/reports', reportRoutes);   // Routes signalements (publiques)
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/pdf', pdfRoutes);
-app.use('/api/public/users', publicUserRoutes); // Routes utilisateurs publiques
-
+app.use('/api/public/users', publicUserRoutes);
 // Démarrer le serveur
 app.listen(PORT, () => {
     console.log(`🚀 Serveur démarré sur http://localhost:${PORT}`);

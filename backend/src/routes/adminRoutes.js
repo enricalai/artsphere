@@ -4,53 +4,53 @@ const adminController = require('../controllers/adminController');
 const authMiddleware = require('../middleware/auth');
 const adminMiddleware = require('../middleware/admin');
 
-// Toutes ces routes nécessitent authentification + rôle admin
-router.use(authMiddleware);
-router.use(adminMiddleware);
+// =============================================
+// Routes PUBLIQUES (authentification seule requise)
+// =============================================
+router.post('/reports', authMiddleware, adminController.createReport);
 
 // =============================================
-// DASHBOARD & STATISTIQUES
+// DASHBOARD & STATISTIQUES (admin uniquement)
 // =============================================
-router.get('/dashboard', adminController.getDashboardStats);
-router.get('/stats/advanced', adminController.getAdvancedStats);
+router.get('/dashboard', authMiddleware, adminMiddleware, adminController.getDashboardStats);
+router.get('/advanced-stats', authMiddleware, adminMiddleware, adminController.getAdvancedStats);
 
 // =============================================
-// GESTION DES UTILISATEURS
+// GESTION DES UTILISATEURS (admin uniquement)
 // =============================================
-router.get('/users', adminController.getAllUsers);
-router.get('/users/:userId', adminController.getUserById);
-router.put('/users/suspend/:userId', adminController.suspendUser);
-router.put('/users/unsuspend/:userId', adminController.unsuspendUser);
-router.delete('/users/:userId', adminController.deleteUser);
+router.get('/users', authMiddleware, adminMiddleware, adminController.getAllUsers);
+router.get('/users/:userId', authMiddleware, adminMiddleware, adminController.getUserById);
+router.put('/users/suspend/:userId', authMiddleware, adminMiddleware, adminController.suspendUser);
+router.put('/users/unsuspend/:userId', authMiddleware, adminMiddleware, adminController.unsuspendUser);
+router.delete('/users/:userId', authMiddleware, adminMiddleware, adminController.deleteUser);
 
 // =============================================
-// GESTION DES ADMINISTRATEURS
+// GESTION DES ADMINISTRATEURS (admin uniquement)
 // =============================================
-router.get('/admins', adminController.getAllAdmins);
-router.post('/admins', adminController.createAdmin);
-router.delete('/admins/:adminId', adminController.deleteAdmin);
+router.get('/admins', authMiddleware, adminMiddleware, adminController.getAllAdmins);
+router.post('/admins', authMiddleware, adminMiddleware, adminController.createAdmin);
+router.delete('/admins/:adminId', authMiddleware, adminMiddleware, adminController.deleteAdmin);
 
 // =============================================
-// GESTION DES SIGNALEMENTS
+// GESTION DES SIGNALEMENTS (admin uniquement - visualisation et traitement)
 // =============================================
-router.get('/reports', adminController.getAllReports);
-router.get('/reports/:reportId', adminController.getReportById);
-router.post('/reports', adminController.createReport);
-router.put('/reports/:reportId/resolve', adminController.resolveReport);
-router.post('/reports/bulk-resolve', adminController.bulkResolveReports);
+router.get('/reports', authMiddleware, adminMiddleware, adminController.getAllReports);
+router.get('/reports/:reportId', authMiddleware, adminMiddleware, adminController.getReportById);
+router.put('/reports/:reportId/resolve', authMiddleware, adminMiddleware, adminController.resolveReport);
+router.post('/reports/bulk-resolve', authMiddleware, adminMiddleware, adminController.bulkResolveReports);
 
 // =============================================
-// GESTION DES ŒUVRES
+// GESTION DES ŒUVRES (admin uniquement)
 // =============================================
-router.get('/artworks', adminController.getAllArtworks);
-router.get('/artworks/:artworkId', adminController.getArtworkById);
-router.delete('/artworks/:artworkId', adminController.adminDeleteArtwork);
-router.put('/artworks/:artworkId/status', adminController.adminUpdateArtworkStatus);
+router.get('/artworks', authMiddleware, adminMiddleware, adminController.getAllArtworks);
+router.get('/artworks/:artworkId', authMiddleware, adminMiddleware, adminController.getArtworkById);
+router.delete('/artworks/:artworkId', authMiddleware, adminMiddleware, adminController.adminDeleteArtwork);
+router.put('/artworks/:artworkId/status', authMiddleware, adminMiddleware, adminController.adminUpdateArtworkStatus);
 
 // =============================================
-// GESTION DES COMMANDES
+// GESTION DES COMMANDES (admin uniquement)
 // =============================================
-router.get('/orders', adminController.getAllOrders);
-router.put('/orders/:orderId/status', adminController.updateOrderStatus);
+router.get('/orders', authMiddleware, adminMiddleware, adminController.getAllOrders);
+router.put('/orders/:orderId/status', authMiddleware, adminMiddleware, adminController.updateOrderStatus);
 
 module.exports = router;

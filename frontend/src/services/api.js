@@ -117,7 +117,7 @@ export const getAllReports = (status = null, page = 1, limit = 20) => {
     return api.get(url);
 };
 export const getReportById = (reportId) => api.get(`/admin/reports/${reportId}`);
-export const createReport = (data) => api.post('/admin/reports', data);
+export const createReport = (data) => api.post('/reports', data);
 export const resolveReport = (reportId, action) => 
     api.put(`/admin/reports/${reportId}/resolve`, { action });
 export const bulkResolveReports = (reportIds, action) => 
