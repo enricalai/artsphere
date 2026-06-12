@@ -1,5 +1,5 @@
 const db = require('../config/db');
-const fs = require('fs').promises; // Utilisation des promesses pour les fichiers
+const fs = require('fs').promises;
 const bcrypt = require('bcrypt');
 
 // =============================================
@@ -80,6 +80,29 @@ exports.getAllUsers = async (req, res) => {
     }
 };
 
+exports.getUserById = async (req, res) => {
+    const { userId } = req.params;
+    try {
+        const [users] = await db.query(
+            `SELECT id, email, nom, sexe, age, ville, pays, avatar_url, role, is_suspended, created_at,
+             (SELECT COUNT(*) FROM artworks WHERE user_id = users.id) as artworks_count
+             FROM users
+             WHERE id = ?`,
+            [userId]
+        );
+        
+        if (users.length === 0) {
+            return res.status(404).json({ error: 'Utilisateur non trouvé' });
+        }
+        
+        res.json(users[0]);
+        
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Erreur lors de la récupération de l\'utilisateur' });
+    }
+};
+
 exports.suspendUser = async (req, res) => {
     const { userId } = req.params;
     try {
@@ -101,12 +124,57 @@ exports.suspendUser = async (req, res) => {
 exports.unsuspendUser = async (req, res) => {
     const { userId } = req.params;
     try {
+        const [users] = await db.query('SELECT role FROM users WHERE id = ?', [userId]);
+        
+        if (users.length === 0) return res.status(404).json({ error: 'Utilisateur non trouvé' });
+        
         await db.query('UPDATE users SET is_suspended = FALSE WHERE id = ?', [userId]);
         await db.query('UPDATE artworks SET status = "active" WHERE user_id = ? AND status = "suspended"', [userId]);
+        
         res.json({ message: 'Utilisateur réactivé avec succès' });
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: 'Erreur lors de la réactivation' });
+    }
+};
+
+exports.deleteUser = async (req, res) => {
+    const { userId } = req.params;
+    try {
+        const [users] = await db.query('SELECT role, avatar_url FROM users WHERE id = ?', [userId]);
+        
+        if (users.length === 0) return res.status(404).json({ error: 'Utilisateur non trouvé' });
+        if (users[0].role === 'admin') return res.status(403).json({ error: 'Impossible de supprimer un admin' });
+        
+        // Supprimer l'avatar si existant
+        if (users[0].avatar_url) {
+            try {
+                await fs.unlink(users[0].avatar_url);
+            } catch (err) {
+                console.warn(`Impossible de supprimer l'avatar : ${users[0].avatar_url}`);
+            }
+        }
+        
+        // Supprimer toutes les œuvres de l'utilisateur
+        const [artworks] = await db.query('SELECT image_url, watermark_url FROM artworks WHERE user_id = ?', [userId]);
+        for (const artwork of artworks) {
+            const filesToDelete = [artwork.image_url, artwork.watermark_url].filter(path => path);
+            for (const path of filesToDelete) {
+                try {
+                    await fs.unlink(path);
+                } catch (err) {
+                    console.warn(`Impossible de supprimer le fichier : ${path}`);
+                }
+            }
+        }
+        
+        // Supprimer l'utilisateur (les œuvres seront supprimées par CASCADE)
+        await db.query('DELETE FROM users WHERE id = ?', [userId]);
+        
+        res.json({ message: 'Utilisateur et toutes ses données supprimés' });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Erreur lors de la suppression de l\'utilisateur' });
     }
 };
 
@@ -116,11 +184,15 @@ exports.unsuspendUser = async (req, res) => {
 
 exports.createAdmin = async (req, res) => {
     const { email, password, nom } = req.body;
-    if (!email || !password || !nom) return res.status(400).json({ error: 'Tous les champs sont requis' });
+    if (!email || !password || !nom) {
+        return res.status(400).json({ error: 'Tous les champs sont requis' });
+    }
 
     try {
         const [existing] = await db.query('SELECT id FROM users WHERE email = ?', [email]);
-        if (existing.length > 0) return res.status(400).json({ error: 'Email déjà utilisé' });
+        if (existing.length > 0) {
+            return res.status(400).json({ error: 'Email déjà utilisé' });
+        }
 
         const hashedPassword = await bcrypt.hash(password, 10);
         const [result] = await db.query(
@@ -128,10 +200,54 @@ exports.createAdmin = async (req, res) => {
             [email, hashedPassword, nom]
         );
 
-        res.status(201).json({ message: 'Admin créé', id: result.insertId });
+        res.status(201).json({ 
+            message: 'Administrateur créé avec succès', 
+            id: result.insertId 
+        });
     } catch (error) {
         console.error(error);
-        res.status(500).json({ error: 'Erreur lors de la création' });
+        res.status(500).json({ error: 'Erreur lors de la création de l\'administrateur' });
+    }
+};
+
+exports.getAllAdmins = async (req, res) => {
+    try {
+        const [admins] = await db.query(
+            `SELECT id, email, nom, created_at 
+             FROM users 
+             WHERE role = 'admin' 
+             ORDER BY created_at DESC`
+        );
+        res.json(admins);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Erreur lors de la récupération des administrateurs' });
+    }
+};
+
+exports.deleteAdmin = async (req, res) => {
+    const { adminId } = req.params;
+    try {
+        const [admins] = await db.query('SELECT role FROM users WHERE id = ?', [adminId]);
+        
+        if (admins.length === 0) {
+            return res.status(404).json({ error: 'Administrateur non trouvé' });
+        }
+        if (admins[0].role !== 'admin') {
+            return res.status(400).json({ error: 'Cet utilisateur n\'est pas un administrateur' });
+        }
+        
+        // Vérifier qu'il reste au moins un admin
+        const [adminCount] = await db.query('SELECT COUNT(*) as count FROM users WHERE role = "admin"');
+        if (adminCount[0].count <= 1) {
+            return res.status(400).json({ error: 'Impossible de supprimer le dernier administrateur' });
+        }
+        
+        await db.query('DELETE FROM users WHERE id = ?', [adminId]);
+        res.json({ message: 'Administrateur supprimé avec succès' });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Erreur lors de la suppression de l\'administrateur' });
     }
 };
 
@@ -143,12 +259,34 @@ exports.createReport = async (req, res) => {
     const { targetUserId, targetArtworkId, reason } = req.body;
     const reporterId = req.user.id;
 
-    if (!targetUserId && !targetArtworkId) return res.status(400).json({ error: 'Cible manquante' });
-    if (!reason) return res.status(400).json({ error: 'Raison requise' });
+    if (!targetUserId && !targetArtworkId) {
+        return res.status(400).json({ error: 'Veuillez spécifier une cible (utilisateur ou œuvre)' });
+    }
+    if (!reason) {
+        return res.status(400).json({ error: 'La raison du signalement est requise' });
+    }
 
     try {
         if (targetUserId && parseInt(targetUserId) === reporterId) {
-            return res.status(400).json({ error: 'Auto-signalement impossible' });
+            return res.status(400).json({ error: 'Vous ne pouvez pas vous signaler vous-même' });
+        }
+
+        // Vérifier si un signalement en attente existe déjà
+        let existingReport;
+        if (targetUserId) {
+            [existingReport] = await db.query(
+                'SELECT id FROM reports WHERE reporter_id = ? AND target_user_id = ? AND status = "pending"',
+                [reporterId, targetUserId]
+            );
+        } else {
+            [existingReport] = await db.query(
+                'SELECT id FROM reports WHERE reporter_id = ? AND target_artwork_id = ? AND status = "pending"',
+                [reporterId, targetArtworkId]
+            );
+        }
+        
+        if (existingReport.length > 0) {
+            return res.status(400).json({ error: 'Vous avez déjà signalé cette cible' });
         }
 
         const [result] = await db.query(
@@ -156,24 +294,43 @@ exports.createReport = async (req, res) => {
             [reporterId, targetUserId || null, targetArtworkId || null, reason]
         );
 
-        res.status(201).json({ message: 'Signalement envoyé', report_id: result.insertId });
+        // Vérifier l'auto-suspension après création du signalement
+        if (targetUserId) {
+            await exports.checkAutoSuspend(targetUserId);
+        }
+
+        res.status(201).json({ 
+            message: 'Signalement envoyé avec succès', 
+            report_id: result.insertId 
+        });
     } catch (error) {
         console.error(error);
-        res.status(500).json({ error: 'Erreur signalement' });
+        res.status(500).json({ error: 'Erreur lors de l\'envoi du signalement' });
     }
 };
 
 exports.getAllReports = async (req, res) => {
     const { status } = req.query;
     let sql = `
-        SELECT r.*, u_reporter.nom as reporter_name, u_target.nom as target_name, a.title as artwork_title
+        SELECT r.*, 
+               r.created_at as report_date,
+               u_reporter.id as reporter_id,
+               u_reporter.nom as reporter_name, 
+               u_reporter.email as reporter_email,
+               u_target.id as target_id,
+               u_target.nom as target_name, 
+               u_target.email as target_email,
+               a.id as artwork_id,
+               a.title as artwork_title, 
+               a.image_url as artwork_image
         FROM reports r
         JOIN users u_reporter ON r.reporter_id = u_reporter.id
         LEFT JOIN users u_target ON r.target_user_id = u_target.id
         LEFT JOIN artworks a ON r.target_artwork_id = a.id
     `;
     const params = [];
-    if (status) {
+    
+    if (status && ['pending', 'resolved'].includes(status)) {
         sql += ' WHERE r.status = ?';
         params.push(status);
     }
@@ -183,34 +340,149 @@ exports.getAllReports = async (req, res) => {
         const [reports] = await db.query(sql, params);
         res.json(reports);
     } catch (error) {
-        res.status(500).json({ error: 'Erreur récupération signalements' });
+        console.error(error);
+        res.status(500).json({ error: 'Erreur lors de la récupération des signalements' });
+    }
+};
+
+exports.getReportById = async (req, res) => {
+    const { reportId } = req.params;
+    try {
+        const [reports] = await db.query(
+            `SELECT r.*, 
+                    u_reporter.nom as reporter_name, u_reporter.email as reporter_email,
+                    u_target.nom as target_name, u_target.email as target_email,
+                    a.title as artwork_title, a.id as artwork_id
+             FROM reports r
+             JOIN users u_reporter ON r.reporter_id = u_reporter.id
+             LEFT JOIN users u_target ON r.target_user_id = u_target.id
+             LEFT JOIN artworks a ON r.target_artwork_id = a.id
+             WHERE r.id = ?`,
+            [reportId]
+        );
+        
+        if (reports.length === 0) {
+            return res.status(404).json({ error: 'Signalement non trouvé' });
+        }
+        
+        res.json(reports[0]);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Erreur lors de la récupération du signalement' });
     }
 };
 
 exports.resolveReport = async (req, res) => {
     const { reportId } = req.params;
-    const { action } = req.body; // 'dismiss' ou 'suspend'
+    const { action } = req.body;
+
+    if (!action || !['ignore', 'suspend'].includes(action)) {
+        return res.status(400).json({ error: 'Action requise: "ignore" ou "suspend"' });
+    }
 
     try {
-        const [reports] = await db.query('SELECT * FROM reports WHERE id = ?', [reportId]);
-        if (reports.length === 0) return res.status(404).json({ error: 'Signalement non trouvé' });
+        const [reports] = await db.query(
+            `SELECT * FROM reports WHERE id = ? AND status = "pending"`,
+            [reportId]
+        );
+
+        if (reports.length === 0) {
+            return res.status(404).json({ error: 'Signalement non trouvé ou déjà traité' });
+        }
 
         const report = reports[0];
 
         if (action === 'suspend') {
             if (report.target_user_id) {
+                // Suspendre l'utilisateur
                 await db.query('UPDATE users SET is_suspended = TRUE WHERE id = ?', [report.target_user_id]);
                 await db.query('UPDATE artworks SET status = "suspended" WHERE user_id = ?', [report.target_user_id]);
             }
             if (report.target_artwork_id) {
-                await db.query('UPDATE artworks SET status = "reported" WHERE id = ?', [report.target_artwork_id]);
+                // Suspendre l'œuvre
+                await db.query('UPDATE artworks SET status = "suspended" WHERE id = ?', [report.target_artwork_id]);
             }
         }
 
         await db.query('UPDATE reports SET status = "resolved" WHERE id = ?', [reportId]);
-        res.json({ message: 'Signalement traité' });
+
+        res.json({ 
+            message: action === 'suspend' ? 'Signalement traité : contenu suspendu' : 'Signalement ignoré',
+            report_id: parseInt(reportId)
+        });
     } catch (error) {
-        res.status(500).json({ error: 'Erreur traitement' });
+        console.error(error);
+        res.status(500).json({ error: 'Erreur lors du traitement du signalement' });
+    }
+};
+
+exports.bulkResolveReports = async (req, res) => {
+    const { reportIds, action } = req.body;
+    
+    if (!reportIds || !Array.isArray(reportIds) || reportIds.length === 0) {
+        return res.status(400).json({ error: 'Liste d\'IDs de signalements requise' });
+    }
+    
+    if (!action || !['ignore', 'suspend'].includes(action)) {
+        return res.status(400).json({ error: 'Action requise: "ignore" ou "suspend"' });
+    }
+
+    try {
+        for (const reportId of reportIds) {
+            const [reports] = await db.query(
+                `SELECT * FROM reports WHERE id = ? AND status = "pending"`,
+                [reportId]
+            );
+            
+            if (reports.length > 0) {
+                const report = reports[0];
+                
+                if (action === 'suspend') {
+                    if (report.target_user_id) {
+                        await db.query('UPDATE users SET is_suspended = TRUE WHERE id = ?', [report.target_user_id]);
+                        await db.query('UPDATE artworks SET status = "suspended" WHERE user_id = ?', [report.target_user_id]);
+                    }
+                    if (report.target_artwork_id) {
+                        await db.query('UPDATE artworks SET status = "suspended" WHERE id = ?', [report.target_artwork_id]);
+                    }
+                }
+                
+                await db.query('UPDATE reports SET status = "resolved" WHERE id = ?', [reportId]);
+            }
+        }
+        
+        res.json({ 
+            message: `${reportIds.length} signalement(s) traités avec succès`,
+            action: action
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Erreur lors du traitement des signalements' });
+    }
+};
+
+// Vérifier et suspendre automatiquement un utilisateur après 3 signalements
+exports.checkAutoSuspend = async (userId) => {
+    try {
+        const [countResult] = await db.query(
+            'SELECT COUNT(*) as count FROM reports WHERE target_user_id = ? AND status = "pending"',
+            [userId]
+        );
+        
+        if (countResult[0].count >= 3) {
+            const [userCheck] = await db.query('SELECT is_suspended FROM users WHERE id = ?', [userId]);
+            
+            if (userCheck.length > 0 && !userCheck[0].is_suspended) {
+                await db.query('UPDATE users SET is_suspended = TRUE WHERE id = ?', [userId]);
+                await db.query('UPDATE artworks SET status = "suspended" WHERE user_id = ?', [userId]);
+                console.log(`Utilisateur ${userId} automatiquement suspendu pour 3 signalements`);
+                return true;
+            }
+        }
+        return false;
+    } catch (error) {
+        console.error('Erreur lors de l\'auto-suspension:', error);
+        return false;
     }
 };
 
@@ -218,29 +490,209 @@ exports.resolveReport = async (req, res) => {
 // GESTION DES ŒUVRES (vue admin)
 // =============================================
 
+exports.getAllArtworks = async (req, res) => {
+    const { status } = req.query;
+    let sql = `
+        SELECT a.*, u.nom as artist_name, u.email as artist_email,
+               (SELECT COUNT(*) FROM likes WHERE artwork_id = a.id) as likes_count,
+               (SELECT COUNT(*) FROM orders WHERE artwork_id = a.id AND status = "confirmed") as sales_count
+        FROM artworks a
+        JOIN users u ON a.user_id = u.id
+    `;
+    const params = [];
+    
+    if (status && ['active', 'suspended', 'reported'].includes(status)) {
+        sql += ' WHERE a.status = ?';
+        params.push(status);
+    }
+    sql += ' ORDER BY a.created_at DESC';
+
+    try {
+        const [artworks] = await db.query(sql, params);
+        res.json(artworks);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Erreur lors de la récupération des œuvres' });
+    }
+};
+
+exports.getArtworkById = async (req, res) => {
+    const { artworkId } = req.params;
+    try {
+        const [artworks] = await db.query(
+            `SELECT a.*, u.nom as artist_name, u.email as artist_email, u.id as artist_id
+             FROM artworks a
+             JOIN users u ON a.user_id = u.id
+             WHERE a.id = ?`,
+            [artworkId]
+        );
+        
+        if (artworks.length === 0) {
+            return res.status(404).json({ error: 'Œuvre non trouvée' });
+        }
+        
+        res.json(artworks[0]);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Erreur lors de la récupération de l\'œuvre' });
+    }
+};
+
 exports.adminDeleteArtwork = async (req, res) => {
     const { artworkId } = req.params;
     try {
         const [artworks] = await db.query('SELECT image_url, watermark_url FROM artworks WHERE id = ?', [artworkId]);
-        if (artworks.length === 0) return res.status(404).json({ error: 'Œuvre non trouvée' });
+        if (artworks.length === 0) {
+            return res.status(404).json({ error: 'Œuvre non trouvée' });
+        }
 
         const artwork = artworks[0];
 
-        // Suppression des fichiers sur le disque (asynchrone)
-        const filesToDelete = [artwork.image_url, artwork.watermark_url].filter(path => path);
+        // Suppression des fichiers sur le disque
+        const filesToDelete = [artwork.image_url, artwork.watermark_url].filter(path => path && path !== '');
         
         for (const path of filesToDelete) {
             try {
                 await fs.unlink(path);
+                console.log(`Fichier supprimé : ${path}`);
             } catch (err) {
-                console.warn(`Impossible de supprimer le fichier : ${path}`);
+                console.warn(`Impossible de supprimer le fichier : ${path}`, err.message);
             }
         }
 
         await db.query('DELETE FROM artworks WHERE id = ?', [artworkId]);
-        res.json({ message: 'Œuvre et fichiers supprimés' });
+        res.json({ message: 'Œuvre et ses fichiers supprimés avec succès' });
     } catch (error) {
         console.error(error);
-        res.status(500).json({ error: 'Erreur lors de la suppression' });
+        res.status(500).json({ error: 'Erreur lors de la suppression de l\'œuvre' });
+    }
+};
+
+exports.adminUpdateArtworkStatus = async (req, res) => {
+    const { artworkId } = req.params;
+    const { status } = req.body;
+    
+    if (!status || !['active', 'suspended', 'reported'].includes(status)) {
+        return res.status(400).json({ error: 'Statut invalide' });
+    }
+    
+    try {
+        const [artworks] = await db.query('SELECT id FROM artworks WHERE id = ?', [artworkId]);
+        if (artworks.length === 0) {
+            return res.status(404).json({ error: 'Œuvre non trouvée' });
+        }
+        
+        await db.query('UPDATE artworks SET status = ? WHERE id = ?', [status, artworkId]);
+        res.json({ message: `Statut de l'œuvre mis à jour : ${status}` });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Erreur lors de la mise à jour du statut' });
+    }
+};
+
+// =============================================
+// GESTION DES COMMANDES (vue admin)
+// =============================================
+
+exports.getAllOrders = async (req, res) => {
+    const { status } = req.query;
+    let sql = `
+        SELECT o.*, 
+               u.nom as user_name, u.email as user_email,
+               a.title as artwork_title, a.image_url as artwork_image
+        FROM orders o
+        JOIN users u ON o.user_id = u.id
+        JOIN artworks a ON o.artwork_id = a.id
+    `;
+    const params = [];
+    
+    if (status && ['pending', 'confirmed', 'cancelled'].includes(status)) {
+        sql += ' WHERE o.status = ?';
+        params.push(status);
+    }
+    sql += ' ORDER BY o.created_at DESC';
+
+    try {
+        const [orders] = await db.query(sql, params);
+        res.json(orders);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Erreur lors de la récupération des commandes' });
+    }
+};
+
+exports.updateOrderStatus = async (req, res) => {
+    const { orderId } = req.params;
+    const { status } = req.body;
+    
+    if (!status || !['pending', 'confirmed', 'cancelled'].includes(status)) {
+        return res.status(400).json({ error: 'Statut invalide' });
+    }
+    
+    try {
+        const [orders] = await db.query('SELECT id FROM orders WHERE id = ?', [orderId]);
+        if (orders.length === 0) {
+            return res.status(404).json({ error: 'Commande non trouvée' });
+        }
+        
+        await db.query('UPDATE orders SET status = ? WHERE id = ?', [status, orderId]);
+        res.json({ message: `Statut de la commande mis à jour : ${status}` });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Erreur lors de la mise à jour de la commande' });
+    }
+};
+
+// =============================================
+// STATISTIQUES AVANCÉES
+// =============================================
+
+exports.getAdvancedStats = async (req, res) => {
+    try {
+        // Statistiques par mois
+        const [monthlyStats] = await db.query(`
+            SELECT 
+                DATE_FORMAT(created_at, '%Y-%m') as month,
+                COUNT(*) as total_orders,
+                SUM(amount) as revenue
+            FROM orders
+            WHERE status = 'confirmed'
+            GROUP BY DATE_FORMAT(created_at, '%Y-%m')
+            ORDER BY month DESC
+            LIMIT 12
+        `);
+        
+        // Top catégories d'œuvres
+        const [topCategories] = await db.query(`
+            SELECT 
+                style as category,
+                COUNT(*) as count
+            FROM artworks
+            WHERE status = 'active'
+            GROUP BY style
+            ORDER BY count DESC
+            LIMIT 5
+        `);
+        
+        // Activité des utilisateurs
+        const [userActivity] = await db.query(`
+            SELECT 
+                DATE(created_at) as date,
+                COUNT(DISTINCT user_id) as active_users,
+                COUNT(*) as new_artworks
+            FROM artworks
+            WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+            GROUP BY DATE(created_at)
+            ORDER BY date DESC
+        `);
+        
+        res.json({
+            monthly_stats: monthlyStats,
+            top_categories: topCategories,
+            user_activity: userActivity
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Erreur lors de la récupération des statistiques avancées' });
     }
 };

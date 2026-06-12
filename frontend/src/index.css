@@ -33,3 +33,7 @@
     @apply bg-anthracite/50;
   }
 }
+
+body {
+    background-color: #F4F1EA;
+}
