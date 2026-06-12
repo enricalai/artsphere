@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+/* eslint-disable */
+import { useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { forgotPassword } from '../services/api';
-import Button from '../components/ui/Button';
-import Input from '../components/ui/Input';
+import emailjs from '@emailjs/browser';
 
 function ForgotPassword() {
     const location = useLocation();
-    const source = location.state?.from || 'login';
+    const navigate = useNavigate();
+    const source = location.state?.source || 'login';
     const [email, setEmail] = useState('');
     const [loading, setLoading] = useState(false);
     const [message, setMessage] = useState('');
@@ -20,56 +21,70 @@ function ForgotPassword() {
 
         try {
             const response = await forgotPassword(email, source);
-            setMessage(response.data.message);
+            const { token, resetLink, nom } = response.data;
+
+            const templateParams = {
+                nom: nom || email.split('@')[0],
+                lien: resetLink,
+                to_email: email
+            };
+
+            await emailjs.send(
+                'service_x4oskpy',
+                'template_3gvu6kw',
+                templateParams,
+                'A9Y0CJG-BEYUA3DEL'
+            );
+
+            setMessage('Un email vous a été envoyé avec un lien de réinitialisation.');
+            setTimeout(() => {
+                navigate('/login');
+            }, 3000);
         } catch (err) {
-            setError(err.response?.data?.error || 'Erreur lors de la demande');
+            console.error('Erreur EmailJS:', err);
+            setError(err.text || 'Erreur lors de l\'envoi de l\'email');
         } finally {
             setLoading(false);
         }
     };
 
     return (
-        <div className="max-w-md mx-auto px-4 py-12 animate-fade-in">
-            <div className="text-center mb-8">
-                <h1 className="font-serif text-3xl text-anthracite">Mot de passe oublié</h1>
-                <p className="font-sans text-anthracite/60 mt-2">
-                    Entrez votre email pour recevoir un lien de réinitialisation
-                </p>
-            </div>
+        <div className="max-w-md mx-auto px-4 py-12">
+            <h1 className="font-serif text-3xl text-center mb-4">Mot de passe oublié</h1>
+            <p className="text-center text-anthracite/60 mb-8">
+                Entrez votre email pour recevoir un lien de réinitialisation
+            </p>
 
             <form onSubmit={handleSubmit} className="space-y-6">
-                <Input
-                    label="Email"
+                <input
                     type="email"
-                    name="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
                     placeholder="votre@email.com"
+                    className="w-full px-4 py-2 border border-anthracite/20 focus:border-prusse outline-none bg-transparent rounded-sm"
                 />
 
                 {message && (
-                    <div className="bg-green-50 border border-green-200 text-green-600 px-4 py-2 rounded-sm text-sm">
+                    <div className="bg-green-50 text-green-600 p-3 rounded text-sm">
                         {message}
                     </div>
                 )}
 
                 {error && (
-                    <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-2 rounded-sm text-sm">
+                    <div className="bg-red-50 text-red-600 p-3 rounded text-sm">
                         {error}
                     </div>
                 )}
 
-                <Button type="submit" variant="primary" disabled={loading} className="w-full">
-                    {loading ? 'Envoi...' : 'Envoyer le lien'}
-                </Button>
+                <button 
+                    type="submit" 
+                    disabled={loading} 
+                    className="bg-prusse text-white w-full px-6 py-2 text-sm hover:bg-prusse/80 transition-colors rounded-sm"
+                >
+                    {loading ? 'Envoi en cours...' : 'Envoyer le lien'}
+                </button>
             </form>
-
-            <p className="text-center mt-6 font-sans text-sm text-anthracite/60">
-                <Link to="/login" className="text-prusse hover:underline">
-                    ← Retour à la connexion
-                </Link>
-            </p>
         </div>
     );
 }

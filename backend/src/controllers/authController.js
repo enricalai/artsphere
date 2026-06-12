@@ -259,11 +259,15 @@ exports.forgotPassword = async (req, res) => {
     }
 
     try {
-        const [users] = await db.query('SELECT id FROM users WHERE email = ?', [email]);
+        const [users] = await db.query('SELECT id, nom FROM users WHERE email = ?', [email]);
         if (users.length === 0) {
-            return res.status(200).json({ message: 'Si cet email existe, vous recevrez un lien de réinitialisation.' });
+            return res.status(200).json({ 
+                message: 'Si cet email existe, vous recevrez un lien de réinitialisation.',
+                resetLink: null 
+            });
         }
 
+        const user = users[0];
         const token = crypto.randomBytes(32).toString('hex');
         const expiresAt = new Date(Date.now() + 3600000);
 
@@ -279,10 +283,14 @@ exports.forgotPassword = async (req, res) => {
         console.log('🔗 LIEN DE RÉINITIALISATION :', resetLink);
         console.log('📝 Source:', source || 'login');
         console.log('👤 From profile:', fromProfile);
+        console.log('👤 Nom utilisateur:', user.nom);
 
         res.json({
-            message: 'Si cet email existe, vous recevrez un lien de réinitialisation.',
-            resetLink
+            message: 'Lien de réinitialisation généré avec succès',
+            resetLink: resetLink,
+            token: token,
+            nom: user.nom,
+            email: email
         });
 
     } catch (error) {
