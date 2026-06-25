@@ -3,32 +3,30 @@ import { getArtworks, searchUsersPublic } from '../services/api';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import Avatar from '../components/ui/Avatar';
-import Pagination from '../components/ui/Pagination';
 import { fixImageUrl } from '../utils/imageUtils';
 
 function Gallery() {
     const { user } = useAuth();
-    const [artworks, setArtworks] = useState([]);
+    const [artworks, setArtworks] = useState([]); // ← déjà un tableau vide
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [activeCategory, setActiveCategory] = useState('all');
     const [searchTerm, setSearchTerm] = useState('');
     const [searchResultsUsers, setSearchResultsUsers] = useState([]);
     const [searching, setSearching] = useState(false);
-    const [pagination, setPagination] = useState({ page: 1, totalPages: 1, total: 0 });
 
     useEffect(() => {
-        loadArtworks(1);
+        loadArtworks();
     }, []);
 
-    // Recherche d'artistes (quand connecté)
+    // Recherche d'artistes
     useEffect(() => {
         const searchUsers = async () => {
             if (user && searchTerm.trim().length >= 2) {
                 setSearching(true);
                 try {
                     const res = await searchUsersPublic(searchTerm);
-                    setSearchResultsUsers(res.data);
+                    setSearchResultsUsers(res.data || []);
                 } catch (err) {
                     console.error(err);
                     setSearchResultsUsers([]);
@@ -43,34 +41,41 @@ function Gallery() {
         searchUsers();
     }, [searchTerm, user]);
 
-    const loadArtworks = async (page = 1) => {
+    const loadArtworks = async () => {
         setLoading(true);
         try {
-            const response = await getArtworks(page);
-            setArtworks(response.data.data);
-            setPagination({
-                page: response.data.pagination.page,
-                totalPages: response.data.pagination.totalPages,
-                total: response.data.pagination.total
-            });
+            const response = await getArtworks();
+            console.log('📦 Réponse API:', response);
+            
+            // Gérer les deux structures possibles
+            let artworksData = [];
+            if (response.data && Array.isArray(response.data)) {
+                artworksData = response.data;
+            } else if (response.data && response.data.data && Array.isArray(response.data.data)) {
+                artworksData = response.data.data;
+            } else if (response.data && typeof response.data === 'object') {
+                // Si c'est un objet, on tente de le convertir en tableau
+                artworksData = Object.values(response.data).filter(item => typeof item === 'object');
+            }
+            
+            console.log('📦 Œuvres extraites:', artworksData);
+            setArtworks(artworksData);
         } catch (err) {
-            console.error(err);
+            console.error('❌ Erreur chargement œuvres:', err);
             setError('Impossible de charger les œuvres');
+            setArtworks([]); // ← important : mettre un tableau vide en cas d'erreur
         } finally {
             setLoading(false);
         }
     };
 
-    const handlePageChange = (newPage) => {
-        loadArtworks(newPage);
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-    };
-
-    // Filtrage des œuvres par catégorie
-    const filteredArtworks = artworks.filter((a) => {
-        if (activeCategory !== 'all' && a.category !== activeCategory) return false;
-        return true;
-    });
+    // Filtrage des œuvres par catégorie (avec protection contre undefined)
+    const filteredArtworks = Array.isArray(artworks) 
+        ? artworks.filter((a) => {
+            if (activeCategory !== 'all' && a.category !== activeCategory) return false;
+            return true;
+        })
+        : [];
 
     if (loading) {
         return (
@@ -95,7 +100,7 @@ function Gallery() {
                 <p className="font-sans text-anthracite/60 mt-2">Découvrez les œuvres de nos artistes</p>
             </div>
 
-            {/* 🔍 Barre de recherche : UNIQUEMENT si connecté */}
+            {/* Barre de recherche : UNIQUEMENT si connecté */}
             {user && (
                 <div className="max-w-md mx-auto mb-6">
                     <input
@@ -108,7 +113,7 @@ function Gallery() {
                 </div>
             )}
 
-            {/* Résultats de recherche d'artistes (uniquement si connecté) */}
+            {/* Résultats de recherche d'artistes */}
             {user && searchResultsUsers.length > 0 && (
                 <div className="mb-8">
                     <h2 className="font-serif text-xl text-anthracite mb-3">
@@ -139,11 +144,6 @@ function Gallery() {
                 </div>
             )}
 
-            {/* Affichage du message "Recherche en cours" */}
-            {user && searching && searchTerm.length >= 2 && (
-                <p className="text-center text-anthracite/60 mb-4">Recherche en cours...</p>
-            )}
-
             {/* Filtres par catégorie */}
             <div className="flex justify-center gap-3 mb-8 flex-wrap">
                 {['all', 'traditionnel', 'photographie', 'numerique'].map((cat) => (
@@ -165,42 +165,32 @@ function Gallery() {
             </div>
 
             {/* Grille des œuvres */}
-            {filteredArtworks.length === 0 ? (
+            {!Array.isArray(filteredArtworks) || filteredArtworks.length === 0 ? (
                 <p className="text-center text-anthracite/60 py-12">Aucune œuvre trouvée.</p>
             ) : (
-                <>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
-                        {filteredArtworks.map((artwork) => (
-                            <Link key={artwork.id} to={`/artwork/${artwork.id}`} className="group">
-                                <div className="bg-creme overflow-hidden border border-anthracite/5 rounded-lg transition-all duration-300 hover:translate-y-[-4px]">
-                                    <img
-                                        src={fixImageUrl(artwork.image_url)}
-                                        alt={artwork.title}
-                                        className="w-full h-64 object-cover transition-opacity duration-500 group-hover:opacity-95"
-                                    />
-                                </div>
-                                <div className="mt-3 text-center">
-                                    <h3 className="text-anthracite text-lg font-serif">{artwork.title}</h3>
-                                    <p className="text-anthracite/60 text-sm font-sans mt-1">{artwork.artist_name}</p>
-                                    {artwork.price && (
-                                        <p className="text-prusse text-sm font-sans mt-2">{artwork.price} €</p>
-                                    )}
-                                </div>
-                            </Link>
-                        ))}
-                    </div>
-
-                    {/* Pagination (si plus d'une page) */}
-                    {pagination.totalPages > 1 && (
-                        <div className="mt-12">
-                            <Pagination
-                                currentPage={pagination.page}
-                                totalPages={pagination.totalPages}
-                                onPageChange={handlePageChange}
-                            />
-                        </div>
-                    )}
-                </>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+                    {filteredArtworks.map((artwork) => (
+                        <Link key={artwork.id} to={`/artwork/${artwork.id}`} className="group">
+                            <div className="bg-creme overflow-hidden border border-anthracite/5 rounded-lg transition-all duration-300 hover:translate-y-[-4px]">
+                                <img
+                                    src={fixImageUrl(artwork.image_url)}
+                                    alt={artwork.title}
+                                    className="w-full h-64 object-cover transition-opacity duration-500 group-hover:opacity-95"
+                                    onError={(e) => {
+                                        e.target.src = 'https://via.placeholder.com/400x400?text=Image+non+disponible';
+                                    }}
+                                />
+                            </div>
+                            <div className="mt-3 text-center">
+                                <h3 className="text-anthracite text-lg font-serif">{artwork.title}</h3>
+                                <p className="text-anthracite/60 text-sm font-sans mt-1">{artwork.artist_name}</p>
+                                {artwork.price && (
+                                    <p className="text-prusse text-sm font-sans mt-2">{artwork.price} €</p>
+                                )}
+                            </div>
+                        </Link>
+                    ))}
+                </div>
             )}
         </div>
     );

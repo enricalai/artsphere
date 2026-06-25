@@ -1,43 +1,21 @@
 const db = require('../config/db');
 const fs = require('fs');
 
-// RÉCUPÉRER TOUTES LES ŒUVRES (avec pagination)
+// RÉCUPÉRER TOUTES LES ŒUVRES (retourne un tableau directement)
 exports.getAllArtworks = async (req, res) => {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 12;
-    const offset = (page - 1) * limit;
-
     try {
         const [artworks] = await db.query(
             `SELECT a.*, u.nom as artist_name 
              FROM artworks a
              JOIN users u ON a.user_id = u.id
              WHERE a.status = 'active'
-             ORDER BY a.created_at DESC
-             LIMIT ? OFFSET ?`,
-            [limit, offset]
+             ORDER BY a.created_at DESC`
         );
 
-        const [[{ total }]] = await db.query(
-            'SELECT COUNT(*) as total FROM artworks WHERE status = "active"'
-        );
-
-        const totalPages = Math.ceil(total / limit);
-
-        res.json({
-            data: artworks,
-            pagination: {
-                page,
-                limit,
-                total,
-                totalPages,
-                hasNext: page < totalPages,
-                hasPrev: page > 1
-            }
-        });
+        res.json(artworks); // ← retourne directement le tableau
     } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: 'Erreur de récupération' });
+        console.error('❌ Erreur getAllArtworks:', error);
+        res.json([]); // ← retourne un tableau vide en cas d'erreur
     }
 };
 
